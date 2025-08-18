@@ -1,67 +1,53 @@
 package com.desafio.itau.backend.controller;
 
 
+import com.desafio.itau.backend.dto.EstatisticasDTO;
+import com.desafio.itau.backend.dto.TransacaoDTO;
+import com.desafio.itau.backend.mapper.EstatisticasMapper;
+import com.desafio.itau.backend.mapper.TransacaoMapper;
 import com.desafio.itau.backend.model.Estatisticas;
 import com.desafio.itau.backend.model.Transacao;
+import com.desafio.itau.backend.service.TransacaoService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.OffsetDateTime;
-import java.util.DoubleSummaryStatistics;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 @RestController
 @RequestMapping
 public class TransacaoController {
 
-    private final List<Transacao> transacoes = new CopyOnWriteArrayList<>();
+    private final TransacaoService service;
+    private final TransacaoMapper transacaoMapper;
+    private final EstatisticasMapper estatisticasMapper;
 
-    @PostMapping("/transacao")
-    public ResponseEntity<Void> criarTransacao(@RequestBody Transacao transacao){
-        boolean adicionada = adicionarTransacao(transacao);
-
-        if (adicionada == true){
-            return new ResponseEntity<>(HttpStatus.CREATED);
-        } else {
-            return new ResponseEntity<>(HttpStatus.UNPROCESSABLE_ENTITY);
-        }
+    public TransacaoController(TransacaoService service,
+                               TransacaoMapper transacaoMapper,
+                               EstatisticasMapper estatisticasMapper) {
+        this.service = service;
+        this.transacaoMapper = transacaoMapper;
+        this.estatisticasMapper = estatisticasMapper;
     }
 
-    private boolean adicionarTransacao(Transacao transacao) {
-
-        if (transacao.getValor() < 0 || transacao.getDataHora().isAfter(OffsetDateTime.now())) {
-            return false;
-        }
-
-        transacoes.add(transacao);
-        return true;
+    @PostMapping("/transacao")
+    public ResponseEntity<Void> criar(@RequestBody @Valid TransacaoDTO dto) {
+        Transacao transacao = transacaoMapper.toEntity(dto);
+        return service.adicionar(transacao)
+                ? ResponseEntity.status(HttpStatus.CREATED).build()
+                : ResponseEntity.unprocessableEntity().build();
     }
 
     @DeleteMapping("/transacao")
-    public ResponseEntity<Void> deletarTransacoes(){
-        transacoes.clear();
-        return new ResponseEntity<>(HttpStatus.OK);
+    public ResponseEntity<Void> limpar() {
+        service.limpar();
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/estatistica")
-    public ResponseEntity<Estatisticas> obterEstatisticas(){
-        OffsetDateTime agora = OffsetDateTime.now();
-
-        DoubleSummaryStatistics status60s = transacoes.stream().filter( t -> t.getDataHora().isAfter(agora.minusSeconds(60)))
-                .mapToDouble(Transacao::getValor)
-                .summaryStatistics();
-
-        Estatisticas estatisticas = new Estatisticas(
-                status60s.getCount(),
-                status60s.getSum(),
-                status60s.getAverage(),
-                status60s.getCount() == 0 ? 0 : status60s.getMin(),
-                status60s.getCount() == 0 ? 0 : status60s.getMax()
-        );
-
-        return ResponseEntity.ok(estatisticas);
+    public ResponseEntity<EstatisticasDTO> obter() {
+        Estatisticas estatisticas = service.calcularEstatisticas();
+        EstatisticasDTO dto = estatisticasMapper.toDTO(estatisticas);
+        return ResponseEntity.ok(dto);
     }
-
 }
+
